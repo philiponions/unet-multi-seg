@@ -7,7 +7,14 @@
 ![input and output for a random image in the test dataset](https://i.imgur.com/GD8FcB7.png)
 
 
-Customized implementation of the [U-Net](https://arxiv.org/abs/1505.04597) in PyTorch for Kaggle's [Carvana Image Masking Challenge](https://www.kaggle.com/c/carvana-image-masking-challenge) from high definition images.
+Customized implementation of the [U-Net](https://arxiv.org/abs/1505.04597)
+I've hacked the upstream of this fork to pieces to get this working for my one-time purposes, 
+I don't suggest you use this for anything.
+
+Changes from upstream:
+ - support PNG palettes for image masks (resizing is not supported)
+ - add a handful of commandline arguments to specify mask color mappings, validation/training directories, and more
+ - arbitrary kwarg passing when torch.hub loading
 
 - [Quick start](#quick-start)
   - [Without Docker](#without-docker)
@@ -162,7 +169,7 @@ When launching a training, a link will be printed in the console. Click on it to
 A [pretrained model](https://github.com/milesial/Pytorch-UNet/releases/tag/v3.0) is available for the Carvana dataset. It can also be loaded from torch.hub:
 
 ```python
-net = torch.hub.load('milesial/Pytorch-UNet', 'unet_carvana', pretrained=True, scale=0.5)
+net = torch.hub.load('Mattwmaster58/unet-multi-seg', 'unet_carvana', pretrained=True, scale=0.5)
 ```
 Available scales are 0.5 and 1.0.
 
