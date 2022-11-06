@@ -9,7 +9,7 @@ def unet_carvana(pretrained=False, scale=0.5, **kwargs):
     Set the scale to 0.5 (50%) when predicting.
     """
     # kwargs override defaults
-    net = _UNet({**dict(n_channels=3, n_classes=2, bilinear=False), **kwargs})
+    net = _UNet(**{**dict(n_channels=3, n_classes=2, bilinear=False), **kwargs})
     if pretrained:
         if scale == 0.5:
             checkpoint = 'https://github.com/milesial/Pytorch-UNet/releases/download/v3.0/unet_carvana_scale0.5_epoch2.pth'
@@ -23,7 +23,7 @@ def unet_carvana(pretrained=False, scale=0.5, **kwargs):
     return net
 
 def custom(checkpoint: Path = None, **kwargs):
-    net = _UNet({**dict(n_channels=3, n_classes=2, bilinear=False), **kwargs})
+    net = _UNet(**{**dict(n_channels=3, n_classes=2, bilinear=False), **kwargs})
     if checkpoint is not None:
         net.load_state_dict(torch.load(checkpoint))
     return net
