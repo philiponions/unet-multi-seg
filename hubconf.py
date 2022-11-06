@@ -20,3 +20,5 @@ def unet_carvana(pretrained=False, scale=0.5, **kwargs):
 
     return net
 
+def custom(**kwargs):
+    return _UNet({**dict(n_channels=3, n_classes=2, bilinear=False), **kwargs})
