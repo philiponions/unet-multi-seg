@@ -1,20 +1,33 @@
+"""
+CLI training interface
+
+Examples:
+    train.py --bilinear --mapping "{(0, 0, 0): 0,(255, 0, 0): 1,(0, 255, 0): 2,(0, 0, 255): 3,(255, 0, 255): 4,(0, 255, 255): 5,(160, 32, 240): 7,(34, 139, 32): 8,(255, 165, 0): 9,(255, 255, 255): 10}"
+
+
+
+
+
+"""
+
 import argparse
+import json
 import logging
-import sys
 from pathlib import Path
+from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 from torch import optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from utils.data_loading import BasicDataset, CarvanaDataset
-from utils.dice_score import dice_loss
 from evaluate import evaluate
 from unet import UNet
+from utils.data_loading import BasicDataset
+from utils.dice_score import dice_loss
 
 dir_img = Path('./data/imgs/')
 dir_mask = Path('./data/masks/')
@@ -29,22 +42,16 @@ def train_net(net,
               val_percent: float = 0.1,
               save_checkpoint: bool = True,
               img_scale: float = 0.5,
-              amp: bool = False):
-    # 1. Create dataset
-    try:
-        # if multi_class semantic segmentation add class mapping
-        # example for 3 class segmentation : mapping = {(0, 0, 0): 0, (255, 0, 255): 1, (0, 255, 255): 2}
-        dataset = CarvanaDataset(dir_img, dir_mask, img_scale, mapping = {})
-    except (AssertionError, RuntimeError):
-        dataset = BasicDataset(dir_img, dir_mask, img_scale, mapping = {})
-
-    # 2. Split into train / validation partitions
-    n_val = int(len(dataset) * val_percent)
-    n_train = len(dataset) - n_val
-    train_set, val_set = random_split(dataset, [n_train, n_val], generator=torch.Generator().manual_seed(0))
+              amp: bool = False,
+              mapping: Dict[Tuple[int, int, int], int] = None,
+              train_path: Path = None,
+              val_dir: Path = None,
+              ):
+    train_set = BasicDataset(train_path / "images", train_path / "masks", scale=img_scale, mapping=mapping)
+    val_set = BasicDataset(val_dir / "images", val_dir / "masks", scale=img_scale, mapping=mapping)
 
     # 3. Create data loaders
-    loader_args = dict(batch_size=batch_size, num_workers=4, pin_memory=True)
+    loader_args = dict(batch_size=batch_size, num_workers=0, pin_memory=True)
     train_loader = DataLoader(train_set, shuffle=True, **loader_args)
     val_loader = DataLoader(val_set, shuffle=False, drop_last=True, **loader_args)
 
@@ -54,12 +61,13 @@ def train_net(net,
                                   val_percent=val_percent, save_checkpoint=save_checkpoint, img_scale=img_scale,
                                   amp=amp))
 
+    n_train = len(train_set)
     logging.info(f'''Starting training:
         Epochs:          {epochs}
         Batch size:      {batch_size}
         Learning rate:   {learning_rate}
         Training size:   {n_train}
-        Validation size: {n_val}
+        Validation size: {len(val_set)}
         Checkpoints:     {save_checkpoint}
         Device:          {device.type}
         Images scaling:  {img_scale}
@@ -160,21 +168,35 @@ def get_args():
     parser.add_argument('--amp', action='store_true', default=False, help='Use mixed precision')
     parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
     parser.add_argument('--classes', '-c', type=int, default=2, help='Number of classes')
-
+    parser.add_argument('--mapping', '-m', type=str, default="{}", help='JSON of (R,G,B) -> Class. Implies/overides -c')
+    parser.add_argument('--data-dir', '-d', type=str, default=None, help="directory to find data in")
+    parser.add_argument('--device', type=str, default="cuda")
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = get_args()
 
+    data_dir = Path(args.data_dir)
+    train_dir = data_dir / "train"
+    val_dir = data_dir / "valid"
+
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(args.device)
     logging.info(f'Using device {device}')
 
     # Change here to adapt to your data
     # n_channels=3 for RGB images
     # n_classes is the number of probabilities you want to get per pixel
-    net = UNet(n_channels=3, n_classes=args.classes, bilinear=args.bilinear)
+    # YES I KNOW THIS IS BAD
+    mapping = eval(args.mapping)
+    if mapping:
+        n_classes = len(mapping)
+        logging.info(f"overriding {args.classes=} -> {n_classes} from mapping")
+    else:
+        n_classes = args.classes
+
+    net = UNet(n_channels=3, n_classes=n_classes, bilinear=args.bilinear)
 
     logging.info(f'Network:\n'
                  f'\t{net.n_channels} input channels\n'
@@ -194,7 +216,10 @@ if __name__ == '__main__':
                   device=device,
                   img_scale=args.scale,
                   val_percent=args.val / 100,
-                  amp=args.amp)
+                  amp=args.amp,
+                  mapping=mapping,
+                  train_path=train_dir,
+                  val_dir=val_dir)
     except KeyboardInterrupt:
         torch.save(net.state_dict(), 'INTERRUPTED.pth')
         logging.info('Saved interrupt')

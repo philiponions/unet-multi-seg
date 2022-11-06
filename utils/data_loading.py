@@ -77,6 +77,7 @@ class BasicDataset(Dataset):
         assert len(mask_file) == 1, f'Either no mask or multiple masks found for the ID {name}: {mask_file}'
         mask = self.load(mask_file[0])
         img = self.load(img_file[0])
+        mask_mode = mask.mode
 
         assert img.size == mask.size, \
             f'Image and mask {name} should be the same size, but are {img.size} and {mask.size}'
@@ -84,15 +85,14 @@ class BasicDataset(Dataset):
         img = self.preprocess(img, self.scale, is_mask=False)
         mask = self.preprocess(mask, self.scale, is_mask=True)
 
-        # mapping the class colors
-        mask = self.mask_to_class(mask, self.mapping)
+
+        if mask_mode != "P":
+            # if palette mode, no need to convert a RGB color because its already correct at this point
+            # mapping the class colors
+            mask = self.mask_to_class(mask, self.mapping)
 
         return {
             'image': torch.as_tensor(img.copy()).float().contiguous(),
             'mask': torch.as_tensor(mask.copy()).long().contiguous()
         }
 
-
-class CarvanaDataset(BasicDataset):
-    def __init__(self, images_dir, masks_dir, scale=1, mapping = {}):
-        super().__init__(images_dir, masks_dir, scale, mask_suffix='_mask')
