@@ -2,12 +2,7 @@
 CLI training interface
 
 Examples:
-    train.py --bilinear --mapping "{(0, 0, 0): 0,(255, 0, 0): 1,(0, 255, 0): 2,(0, 0, 255): 3,(255, 0, 255): 4,(0, 255, 255): 5,(160, 32, 240): 7,(34, 139, 32): 8,(255, 165, 0): 9,(255, 255, 255): 10}"
-
-
-
-
-
+    --batch 128 --data-dir ./unetdata --scale 1 --epochs 100 -c 11 --bilinear
 """
 
 import argparse
@@ -46,12 +41,13 @@ def train_net(net,
               mapping: Dict[Tuple[int, int, int], int] = None,
               train_path: Path = None,
               val_dir: Path = None,
+              workers: int = 4
               ):
     train_set = BasicDataset(train_path / "images", train_path / "masks", scale=img_scale, mapping=mapping)
     val_set = BasicDataset(val_dir / "images", val_dir / "masks", scale=img_scale, mapping=mapping)
 
     # 3. Create data loaders
-    loader_args = dict(batch_size=batch_size, num_workers=0, pin_memory=True)
+    loader_args = dict(batch_size=batch_size, num_workers=workers, pin_memory=True)
     train_loader = DataLoader(train_set, shuffle=True, **loader_args)
     val_loader = DataLoader(val_set, shuffle=False, drop_last=True, **loader_args)
 
@@ -76,7 +72,7 @@ def train_net(net,
 
     # 4. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
     optimizer = optim.RMSprop(net.parameters(), lr=learning_rate, weight_decay=1e-8, momentum=0.9)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=2)  # goal: maximize Dice score
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=3)  # goal: maximize Dice score
     grad_scaler = torch.cuda.amp.GradScaler(enabled=amp)
     criterion = nn.CrossEntropyLoss()
     global_step = 0
@@ -122,32 +118,31 @@ def train_net(net,
 
                 # Evaluation round
                 division_step = (n_train // (10 * batch_size))
-                if division_step > 0:
-                    if global_step % division_step == 0:
-                        histograms = {}
-                        for tag, value in net.named_parameters():
-                            tag = tag.replace('/', '.')
-                            if not torch.isinf(value).any():
-                                histograms['Weights/' + tag] = wandb.Histogram(value.data.cpu())
-                            if not torch.isinf(value.grad).any():
-                                histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
 
-                        val_score = evaluate(net, val_loader, device)
-                        scheduler.step(val_score)
+        histograms = {}
+        for tag, value in net.named_parameters():
+            tag = tag.replace('/', '.')
+            if not torch.isinf(value).any():
+                histograms['Weights/' + tag] = wandb.Histogram(value.data.cpu())
+            if not torch.isinf(value.grad).any():
+                histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
 
-                        logging.info('Validation Dice score: {}'.format(val_score))
-                        experiment.log({
-                            'learning rate': optimizer.param_groups[0]['lr'],
-                            'validation Dice': val_score,
-                            'images': wandb.Image(images[0].cpu()),
-                            'masks': {
-                                'true': wandb.Image(true_masks[0].float().cpu()),
-                                'pred': wandb.Image(masks_pred.argmax(dim=1)[0].float().cpu()),
-                            },
-                            'step': global_step,
-                            'epoch': epoch,
-                            **histograms
-                        })
+        val_score = evaluate(net, val_loader, device)
+        scheduler.step(val_score)
+
+        logging.info('Validation Dice score: {}'.format(val_score))
+        experiment.log({
+            'learning rate': optimizer.param_groups[0]['lr'],
+            'validation Dice': val_score,
+            'images': wandb.Image(images[0].cpu()),
+            'masks': {
+                'true': wandb.Image(true_masks[0].float().cpu()),
+                'pred': wandb.Image(masks_pred.argmax(dim=1)[0].float().cpu()),
+            },
+            'step': global_step,
+            'epoch': epoch,
+            **histograms
+        })
 
         if save_checkpoint:
             Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
@@ -171,6 +166,7 @@ def get_args():
     parser.add_argument('--mapping', '-m', type=str, default="{}", help='JSON of (R,G,B) -> Class. Implies/overides -c')
     parser.add_argument('--data-dir', '-d', type=str, default=None, help="directory to find data in")
     parser.add_argument('--device', type=str, default="cuda")
+    parser.add_argument('--workers', type=int, default=4)
     return parser.parse_args()
 
 
@@ -219,7 +215,8 @@ if __name__ == '__main__':
                   amp=args.amp,
                   mapping=mapping,
                   train_path=train_dir,
-                  val_dir=val_dir)
+                  val_dir=val_dir,
+                  workers=args.workers)
     except KeyboardInterrupt:
         torch.save(net.state_dict(), 'INTERRUPTED.pth')
         logging.info('Saved interrupt')
