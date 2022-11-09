@@ -1,12 +1,15 @@
 
 Customized implementation of the [U-Net](https://arxiv.org/abs/1505.04597)
+
 I've hacked the upstream of this fork to pieces to get this working for my one-time purposes, 
-I don't suggest you use this for anything.
+I don't suggest you use this for anything. Lots of options don't work with certain other options, so please check the code is doing what it's supposed to. Again, it's a bad idea to use this fork.
 
 Changes from upstream:
  - support PNG palettes for image masks (resizing is not supported)
  - add a handful of commandline arguments to specify mask color mappings, validation/training directories, and more
  - arbitrary kwarg passing when torch.hub loading (eg, changing number of classes)
+ - @mac-op - loading data directly from .npy files
+ 
 
 ## Quick start
 
@@ -44,4 +47,5 @@ optional arguments:
                         directory to find data in
   --device DEVICE
   --workers WORKERS
+  --load-from-npy       Load image arrays from .npy files
 ```
