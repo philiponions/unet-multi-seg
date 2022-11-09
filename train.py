@@ -21,6 +21,7 @@ from tqdm import tqdm
 
 from evaluate import evaluate
 from unet import UNet
+from utils.numpy_loading import NumpyDataset
 from utils.data_loading import BasicDataset
 from utils.dice_score import dice_loss
 
@@ -41,10 +42,16 @@ def train_net(net,
               mapping: Dict[Tuple[int, int, int], int] = None,
               train_path: Path = None,
               val_dir: Path = None,
-              workers: int = 4
+              workers: int = 4,
+              load_np: bool = False
               ):
-    train_set = BasicDataset(train_path / "images", train_path / "masks", scale=img_scale, mapping=mapping)
-    val_set = BasicDataset(val_dir / "images", val_dir / "masks", scale=img_scale, mapping=mapping)
+
+    if load_np:
+        train_set = NumpyDataset(train_path / "images", train_path / "masks", scale=img_scale, mapping=mapping, train=True)
+        val_set = NumpyDataset(val_dir / "images", val_dir / "masks", scale=img_scale, mapping=mapping)
+    else:
+        train_set = BasicDataset(train_path / "images", train_path / "masks", scale=img_scale, mapping=mapping)
+        val_set = BasicDataset(val_dir / "images", val_dir / "masks", scale=img_scale, mapping=mapping)
 
     # 3. Create data loaders
     loader_args = dict(batch_size=batch_size, num_workers=workers, pin_memory=True)
@@ -68,6 +75,7 @@ def train_net(net,
         Device:          {device.type}
         Images scaling:  {img_scale}
         Mixed Precision: {amp}
+        Load from Numpy: {load_np}
     ''')
 
     # 4. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
@@ -165,6 +173,8 @@ def get_args():
     parser.add_argument('--classes', '-c', type=int, default=2, help='Number of classes')
     parser.add_argument('--mapping', '-m', type=str, default="{}", help='JSON of (R,G,B) -> Class. Implies/overides -c')
     parser.add_argument('--data-dir', '-d', type=str, default=None, help="directory to find data in")
+    parser.add_argument('--load-from-npy', '-n', action='store_true', default=False, dest='load_np',
+                        help='Load image arrays from .npy files')
     parser.add_argument('--device', type=str, default="cuda")
     parser.add_argument('--workers', type=int, default=4)
     return parser.parse_args()
@@ -216,7 +226,8 @@ if __name__ == '__main__':
                   mapping=mapping,
                   train_path=train_dir,
                   val_dir=val_dir,
-                  workers=args.workers)
+                  workers=args.workers,
+                  load_np=args.load_np)
     except KeyboardInterrupt:
         torch.save(net.state_dict(), 'INTERRUPTED.pth')
         logging.info('Saved interrupt')
