@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Dataset
 
 
-class BasicDataset(Dataset):
+class NumpyDataset(Dataset):
     def __init__(self, images_dir: str, masks_dir: str, scale: float = 1.0, mask_suffix: str = '', mapping={}, train=False):
         if train:
             self.images = np.load(str(images_dir) + "/train_X.npy")
