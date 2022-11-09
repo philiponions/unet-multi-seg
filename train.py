@@ -21,7 +21,7 @@ from tqdm import tqdm
 
 from evaluate import evaluate
 from unet import UNet
-from utils.data_loading import BasicDataset
+from utils.numpy_loading import BasicDataset
 from utils.dice_score import dice_loss
 
 dir_img = Path('./data/imgs/')
@@ -43,7 +43,7 @@ def train_net(net,
               val_dir: Path = None,
               workers: int = 4
               ):
-    train_set = BasicDataset(train_path / "images", train_path / "masks", scale=img_scale, mapping=mapping)
+    train_set = BasicDataset(train_path / "images", train_path / "masks", scale=img_scale, mapping=mapping, train=True)
     val_set = BasicDataset(val_dir / "images", val_dir / "masks", scale=img_scale, mapping=mapping)
 
     # 3. Create data loaders
